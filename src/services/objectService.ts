@@ -18,10 +18,17 @@ export async function createObject(key: string, data: object, tenantId: string, 
 }
 
 export async function getObject(key: string, tenantId: string) {
-  const record = await KVModel.findOne({ where: { key , tenantId} });
+  const record = await KVModel.findOne({ where: { key, tenantId } });
+  
   if (!record) {
     throw new NotFoundError('Key not found in database');
   }
+  if (record.ttl && record.ttl <  Math.floor(Date.now() / 1000)) {
+    console.log(`Key ${key} for tenant ${tenantId} has expired.`);
+    await KVModel.destroy({ where: { key, tenantId } });
+    throw new NotFoundError('Key is expired');
+  }
+
   return record;
 }
 
