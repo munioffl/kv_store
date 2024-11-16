@@ -36,10 +36,45 @@
 			"response": []
 		},
 		{
-			"name": "createBatch",
+			"name": "createTenant",
 			"request": {
 				"method": "POST",
 				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "\n{\n  \"name\" : \"test\",\n  \"tenantLimitMb\":2,\n  \"rateLimit\": 2\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:3000/api/tenant",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "3000",
+					"path": [
+						"api",
+						"tenant"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "createBatch",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "a06102b20991f01a2ebbadf4fed1c952216e41ca148c980e9993ed8ffee2c18f",
+						"type": "text"
+					}
+				],
 				"body": {
 					"mode": "raw",
 					"raw": "[\n    {\n        \"key\": \"12345\",\n        \"data\": {\n            \"name\": \"Alice Smith\",\n            \"email\": \"alice@example.com\",\n            \"age\": 28\n        },\n        \"ttl\": 120\n    },\n    {\n        \"key\": \"2\",\n        \"data\": {\n            \"name\": \"Bob Johnson\",\n            \"email\": \"bob@example.com\",\n            \"age\": 34\n        },\n        \"ttl\": 180\n    },\n    {\n        \"key\": \"3\",\n        \"data\": {\n            \"name\": \"Carol Williams\",\n            \"email\": \"carol@example.com\",\n            \"age\": 25\n        },\n        \"ttl\": 240\n    },\n    {\n        \"key\": \"4\",\n        \"data\": {\n            \"name\": \"David Brown\",\n            \"email\": \"david@example.com\",\n            \"age\": 29\n        },\n        \"ttl\": 150\n    },\n    {\n        \"key\": \"5\",\n        \"data\": {\n            \"name\": \"Eve Davis\",\n            \"email\": \"eve@example.com\",\n            \"age\": 32\n        },\n        \"ttl\": 300\n    }\n]",
@@ -74,15 +109,22 @@
 						"exec": [
 							""
 						],
-						"type": "text/javascript"
+						"type": "text/javascript",
+						"packages": {}
 					}
 				}
 			],
 			"request": {
 				"method": "GET",
-				"header": [],
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "{{x-api-key}}",
+						"type": "text"
+					}
+				],
 				"url": {
-					"raw": "http://localhost:3000/api/object/7",
+					"raw": "http://localhost:3000/api/object/10",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -91,7 +133,7 @@
 					"path": [
 						"api",
 						"object",
-						"7"
+						"10"
 					]
 				}
 			},
@@ -117,6 +159,12 @@
 				}
 			},
 			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "x-api-key",
+			"value": "f22300a4fe39aefcad3d640f215fc17d24b4a3deea6883061447f877ef67b830"
 		}
 	]
 }

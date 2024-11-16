@@ -1,107 +1,67 @@
 import { KVModel } from '../models/kvModel';
-import { redisClient } from '../cache/redisClient';
-import { logger } from '../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
+import { ConflictError, NotFoundError, ValidationError } from '../utils/errors';
 
-const TENANT_LIMIT_MB = 1 * 1024 * 1024; // 1 MB limit per tenant
+
 const BATCH_LIMIT = 50;
 
-export async function validateTenantLimit(tenantId: string, newDataSize: number): Promise<boolean> {
-  const records = await KVModel.findAll({ where: { tenantId } });
-  const totalSize = records.reduce((accum : any, record) => accum + Buffer.byteLength(JSON.stringify(record.data)), 0);
-  if (totalSize + newDataSize > TENANT_LIMIT_MB) {
-    logger.error('Tenant limit exceeded');
-    return false;
+export async function createObject(key: string, data: object, tenantId: string, ttl?: number) {
+  const existingRecord = await KVModel.findOne({ where: { key } });
+  if (existingRecord) {
+    throw new ConflictError('Key already exists in the database');
   }
-  return true;
-}
-
-export async function getTenantIdForKey(dataSize: number): Promise<string> {
-  const existingRecords = await KVModel.findAll({
-    order: [['createdAt', 'DESC']],
-    limit: 1,
-  });
-  if (existingRecords && existingRecords.length > 0) {
-    const limitAvailable = await validateTenantLimit(existingRecords[0].tenantId, dataSize);
-    return limitAvailable ? existingRecords[0].tenantId : uuidv4();
-  } else {
-    return uuidv4();
-  }
-}
-
-export async function createObject(key: string, data: object, ttl?: number) {
-  await KVModel.sync({ alter: true });
-  const dataSize = Buffer.byteLength(JSON.stringify(data));
   try {
-    const tenantId = await getTenantIdForKey(dataSize);
-    const existingRecord = await KVModel.findOne({ where: { key } });
-    if (existingRecord) {
-      logger.info('Key already exists in the database');
-      return 'Key already exists in the database';
-    }
     const response = await KVModel.create({ key, data, ttl, tenantId });
-    if (ttl) {
-      await redisClient.setEx(key, ttl, JSON.stringify(data));
-    }
     return response;
   } catch (error) {
-    logger.error('Error creating object:', error);
-    throw error;
+    throw new ValidationError('Error while creating object');
   }
 }
 
-export async function getObject(key: string) {
-  const cachedData = await redisClient.get(key);
-  if (cachedData) {
-    logger.info('Data found in Redis cache');
-    return JSON.parse(cachedData);
-  }
-  const record = await KVModel.findOne({ where: { key } });
+export async function getObject(key: string, tenantId: string) {
+  const record = await KVModel.findOne({ where: { key , tenantId} });
   if (!record) {
-    logger.error('Key not found in database');
-    return 'Key not found in database';
-  }
-  if (record.ttl) {
-    logger.info('Data found in database and stored in Redis cache');
-    await redisClient.setEx(key, record.ttl, JSON.stringify(record));
+    throw new NotFoundError('Key not found in database');
   }
   return record;
 }
 
-export async function deleteObject(key: string) {
-  const deletedCount = await KVModel.destroy({ where: { key } });
-  if (deletedCount) {
-    await redisClient.del(key);
-    return 'Key deleted successfully';
+export async function deleteObject(key: string, tenantId: string) {
+  const deletedCount = await KVModel.destroy({ where: { key , tenantId} });
+  if (!deletedCount) {
+    throw new NotFoundError('Key not found in database');
   }
-  return 'Key not found in database';
+  return 'Key deleted successfully';
 }
 
-export async function createObjectsBatch(objects: { key: string, data: object, ttl?: number }[]) {
-  if (objects.length > BATCH_LIMIT) throw new Error(`Batch limit of ${BATCH_LIMIT} exceeded`);
+export async function createObjectsBatch(objects: { key: string; data: object; ttl?: number }[], tenantId: string) {
+  if (objects.length > BATCH_LIMIT) {
+    throw new ValidationError(`Batch limit of ${BATCH_LIMIT} exceeded`);
+  }
+
   const duplicateKeys: string[] = [];
   const createdRecords: string[] = [];
 
-  for (const obj of objects) {
-    const dataSize = Buffer.byteLength(JSON.stringify(obj.data));
-    const tenantId = await getTenantIdForKey(dataSize);
+  for (const obj of objects) { 
     const existingRecord = await KVModel.findOne({ where: { key: obj.key } });
     if (existingRecord) {
-      logger.info('Key already exists in the database', obj.key);
       duplicateKeys.push(obj.key);
       continue;
     }
-    createdRecords.push(obj.key);
-    await KVModel.create({ key: obj.key, data: obj.data, ttl: obj.ttl, tenantId });
-    if (obj.ttl) {
-      await redisClient.setEx(obj.key, obj.ttl, JSON.stringify(obj.data));
+
+    try {
+      createdRecords.push(obj.key);
+      await KVModel.create({ key: obj.key, data: obj.data, ttl: obj.ttl, tenantId });
+    } catch (error) {
+      throw new ValidationError(`Error while processing key: ${obj.key}`);
     }
   }
+
+  if (duplicateKeys.length > 0) {
+    throw new ConflictError(`Some keys already exist in the database: ${duplicateKeys.join(', ')}`);
+  }
+
   return {
-    message: duplicateKeys.length > 0 
-      ? 'Some keys were not created because they already exist in the database' 
-      : 'All keys were successfully created',
-    duplicates: duplicateKeys,
-    created: createdRecords
+    message: 'All keys were successfully created',
+    created: createdRecords,
   };
 }

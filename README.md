@@ -27,6 +27,7 @@ key-value-store
 │   │   └── database.ts
 │   ├── controllers
 │   │   └── objectController.ts
+│   │   └── tenantController.ts
 │   ├── middlewares
 │   │   ├── rateLimiter.ts
 │   │   └── errorHandler.ts
@@ -44,6 +45,7 @@ key-value-store
 │       └── index.d.ts
 ├── tests
 │   └── object.test.ts
+│   └── tenant.test.ts
 ├── .env
 ├── .gitignore
 ├── package.json
@@ -118,19 +120,6 @@ REDIS_PORT=6379
      sudo apt install redis-server
      ```
 
-2. **Start Redis**:
-   - On **macOS**:
-     ```bash
-     brew services start redis
-     ```
-   - On **Ubuntu**:
-     ```bash
-     sudo service redis-server start
-     ```
-
-3. **Configure Redis**:
-   Update `.env` with the correct `REDIS_HOST` and `REDIS_PORT`.
-
 ### 5. Run the Service
 Start the application in development mode:
 ```bash
@@ -143,13 +132,36 @@ Run the test suite:
 npm test
 ```
 
----
-
 ## API Endpoints
 
-### **POST /api/object**
-Creates a new key-value pair.
+### **POST /api/tenant**
 
+Creates a new tenant and returns the tenant's API key.
+
+- **Request Body**:
+  ```
+  {
+    "name": "<String>",
+    "tenantLimitMb": "<Number>",
+    "rateLimit": "<Number>"
+  }
+  ```
+- **Responses**:
+  - `201 Created` if successful.
+  - 
+
+400 Bad Request
+
+ if input validation fails.
+
+### **POST /api/object**
+
+Creates a new key-value pair. Use the `api_key` obtained from the tenant creation in the headers.
+
+- **Request Headers**:
+  ```plaintext
+  x-api-key: <api_key>
+  ```
 - **Request Body**:
   ```json
   {
@@ -160,25 +172,52 @@ Creates a new key-value pair.
   ```
 - **Responses**:
   - `201 Created` if successful.
-  - `400 Bad Request` if the key already exists or input validation fails.
+  - 
+
+400 Bad Request
+
+ if the key already exists or input validation fails.
 
 ### **GET /api/object/:key**
-Retrieves the value associated with a given key.
 
+Retrieves the value associated with a given key. Use the `api_key` obtained from the tenant creation in the headers.
+
+- **Request Headers**:
+  ```plaintext
+  x-api-key: <api_key>
+  ```
 - **Response**:
-  - `200 OK` with the JSON data if the key is found.
+  - 
+
+200 OK
+
+ with the JSON data if the key is found.
   - `404 Not Found` if the key does not exist.
 
 ### **DELETE /api/object/:key**
-Deletes a key-value pair by key.
 
+Deletes a key-value pair by key. Use the `api_key` obtained from the tenant creation in the headers.
+
+- **Request Headers**:
+  ```plaintext
+  x-api-key: <api_key>
+  ```
 - **Response**:
-  - `200 OK` if the key is deleted successfully.
+  - 
+
+200 OK
+
+ if the key is deleted successfully.
   - `404 Not Found` if the key does not exist.
 
-### **POST /api/batch**
-Creates multiple key-value pairs in a single batch request.
+### **POST /api/object/batch**
 
+Creates multiple key-value pairs in a single batch request. Use the `api_key` obtained from the tenant creation in the headers.
+
+- **Request Headers**:
+  ```plaintext
+  x-api-key: <api_key>
+  ```
 - **Request Body**:
   ```json
   [
@@ -192,31 +231,97 @@ Creates multiple key-value pairs in a single batch request.
   ```
 - **Responses**:
   - `201 Created` if all key-value pairs are created successfully.
-  - `400 Bad Request` if any keys are duplicated or validation fails.
+  - 
 
----
+400 Bad Request
+
+ if any keys are duplicated or validation fails.
+
+## Example Usage
+
+1. **Create a Tenant**:
+   Use `curl` to create a tenant and obtain the `api_key`:
+
+   ```bash
+   curl -X POST http://localhost:3000/api/tenant \
+   -H "Content-Type: application/json" \
+   -d '{
+     "name": "Tenant One",
+     "tenantLimitMb": 10,
+     "rateLimit": 100
+   }'
+   ```
+
+   The response will include the `api_key` for the tenant.
+
+2. **Use the `api_key` for CRD Operations**:
+
+   - **Create an Object**:
+     ```bash
+     curl -X POST http://localhost:3000/api/object \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: <api_key>" \
+     -d '{
+       "key": "exampleKey",
+       "data": { "message": "Hello, World!" },
+       "ttl": 3600
+     }'
+     ```
+
+   - **Retrieve an Object**:
+     ```bash
+     curl -X GET http://localhost:3000/api/object/exampleKey \
+     -H "x-api-key: <api_key>"
+     ```
+
+   - **Delete an Object**:
+     ```bash
+     curl -X DELETE http://localhost:3000/api/object/exampleKey \
+     -H "x-api-key: <api_key>"
+     ```
+
+   - **Create Objects in Batch**:
+     ```bash
+     curl -X POST http://localhost:3000/api/object/batch \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: <api_key>" \
+     -d '[
+       {
+         "key": "key1",
+         "data": { "message": "Hello, World!" },
+         "ttl": 3600
+       },
+       {
+         "key": "key2",
+         "data": { "message": "Hello, Universe!" },
+         "ttl": 3600
+       }
+     ]'
+     ```
 
 ## Design Decisions
 
-- **Redis Caching**: Integrated Redis to store TTL-based data and improve retrieval speeds. Keys with TTL are cached for faster access and automatic expiration.
 - **Tenant Isolation**: Enforces tenant-specific storage limits for isolated, fair usage.
 - **Periodic Cleanup**: Uses a cron job to regularly remove expired entries from the database.
 - **Rate Limiting**: Limits requests per tenant to ensure system stability and prevent abuse.
 
----
-
 ## Additional Information
 
 ### Concurrency
+
 Implemented transaction handling and database locking to allow concurrent data access.
 
 ### Error Handling
+
 Comprehensive error responses are provided for invalid requests, including exceeding limits, duplicate keys, and other common edge cases.
 
 ### Logging
-Basic logging setup with `winston` for tracking errors and activity.
 
----
+Basic logging setup with 
+
+winston
+
+ for tracking errors and activity.
 
 ## Scripts
 
@@ -224,8 +329,6 @@ Basic logging setup with `winston` for tracking errors and activity.
 - **`npm run build`** - Builds TypeScript files to JavaScript in the `dist` directory.
 - **`npm start`** - Runs the compiled code in production.
 - **`npm test`** - Runs tests with Jest.
-
----
 
 ## Testing
 
@@ -235,43 +338,3 @@ The project includes unit and integration tests covering:
 - TTL expiration.
 - Multi-tenancy and storage limits.
 - Rate limiting.
-
----
-
-## Future Enhancements
-
-- **Advanced Caching Strategies**: Implement caching based on read frequency with eviction policies.
-- **Enhanced Rate Limiting**: Dynamic rate limits based on tenant activity.
-- **Database Flexibility**: Add support for PostgreSQL and other databases.
-- **High Availability**: Explore sharding and replication for larger deployments.
-
----
-
-## Example Usage
-
-Use `curl` to test the API endpoints:
-
-```bash
-curl -X POST http://localhost:3000/api/object \
--H "Content-Type: application/json" \
--H "tenant-id: tenant1" \
--d '{
-  "key": "exampleKey",
-  "data": { "message": "Hello, World!" },
-  "ttl": 3600
-}'
-```
-
----
-
-## License
-
-This project is licensed under the MIT License.
-
-## Author
-
-Muniyappan Mani
-
----
-
-This version has the MySQL and Redis installation guides added for a complete setup. Let me know if you need any further updates!

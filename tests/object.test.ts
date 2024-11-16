@@ -1,130 +1,101 @@
-import request from 'supertest';
-import express from 'express';
 import { KVModel } from '../src/models/kvModel';
-import { redisClient } from '../src/cache/redisClient';
-import objectController from '../src/controllers/objectController';
-import { createObject, createObjectsBatch, deleteObject, getObject, getTenantIdForKey } from '../src/services/objectService';
+import { createObject, getObject, deleteObject, createObjectsBatch } from '../src/services/objectService';
+import { ConflictError, NotFoundError, ValidationError } from '../src//utils/errors';
 
 jest.mock('../src/models/kvModel');
-jest.mock('../src/cache/redisClient');
-jest.mock('../src/services/objectService', () => ({
-  ...jest.requireActual('../src/services/objectService'),
-  getTenantIdForKey: jest.fn(),
-}));
 
-const app = express();
-app.use(express.json());
-app.use('/objects', objectController); 
+describe('objectService', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
-describe('getObject', () => {
-    it('should retrieve an object from the database if not in cache', async () => {
-      (redisClient.get as jest.Mock).mockResolvedValue(null);
-      (KVModel.findOne as jest.Mock).mockResolvedValue({ key: 'key1', data: { name: 'John' }, ttl: 60 });
+  describe('createObject', () => {
+    it('should create a new object successfully', async () => {
+      (KVModel.findOne as jest.Mock).mockResolvedValue(null);
+      (KVModel.create as jest.Mock).mockResolvedValue({ key: 'test-key', data: { test: 'data' } });
 
-      const response = await getObject('key1');
-      expect(redisClient.get).toHaveBeenCalledWith('key1');
-      expect(KVModel.findOne).toHaveBeenCalledWith({ where: { key: 'key1' } });
-      expect(response).toHaveProperty('data', { name: 'John' });
+      const response = await createObject('test-key', { test: 'data' }, 'tenant-123', 3600);
+
+      expect(response).toEqual(expect.objectContaining({ key: 'test-key' }));
+      expect(KVModel.create).toHaveBeenCalled();
     });
 
-    it('should retrieve an object from Redis cache if available', async () => {
-      (redisClient.get as jest.Mock).mockResolvedValue(JSON.stringify({ name: 'John' }));
+    it('should throw ConflictError if the key already exists', async () => {
+      (KVModel.findOne as jest.Mock).mockResolvedValue({ key: 'test-key' });
 
-      const response = await getObject('key1');
-      expect(redisClient.get).toHaveBeenCalledWith('key1');
-      expect(response).toEqual({ name: 'John' });
+      await expect(createObject('test-key', { test: 'data' }, 'tenant-123')).rejects.toThrow(ConflictError);
+    });
+  });
+
+  describe('getObject', () => {
+    it('should retrieve an object successfully', async () => {
+      (KVModel.findOne as jest.Mock).mockResolvedValue({ key: 'test-key', data: { test: 'data' } });
+
+      const response = await getObject('test-key', 'tenant-123');
+
+      expect(response).toEqual(expect.objectContaining({ key: 'test-key' }));
+      expect(KVModel.findOne).toHaveBeenCalled();
     });
 
-    it('should return error if key is not found', async () => {
-      (redisClient.get as jest.Mock).mockResolvedValue(null);
+    it('should throw NotFoundError if the key does not exist', async () => {
       (KVModel.findOne as jest.Mock).mockResolvedValue(null);
 
-      const response = await getObject('key1');
-      expect(response).toBe('Key not found in database');
+      await expect(getObject('test-key', 'tenant-123')).rejects.toThrow(NotFoundError);
     });
-});
+  });
 
-describe('deleteObject', () => {
-    it('should delete an object if it exists in the database', async () => {
+  describe('deleteObject', () => {
+    it('should delete an object successfully', async () => {
       (KVModel.destroy as jest.Mock).mockResolvedValue(1);
 
-      const response = await deleteObject('key1');
-      expect(KVModel.destroy).toHaveBeenCalledWith({ where: { key: 'key1' } });
-      expect(redisClient.del).toHaveBeenCalledWith('key1');
+      const response = await deleteObject('test-key', 'tenant-123');
+
       expect(response).toBe('Key deleted successfully');
+      expect(KVModel.destroy).toHaveBeenCalled();
     });
 
-    it('should return an error if the key does not exist', async () => {
+    it('should throw NotFoundError if the key does not exist', async () => {
       (KVModel.destroy as jest.Mock).mockResolvedValue(0);
 
-      const response = await deleteObject('key1');
-      expect(response).toBe('Key not found in database');
+      await expect(deleteObject('test-key', 'tenant-123')).rejects.toThrow(NotFoundError);
     });
-});
+  });
 
-describe('createObject', () => {
-    const mockKey = 'existingKey';
-    const mockData = { name: 'Existing Object' };
-    const mockTTL = 60;
-  
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
-  
-    it('should return a message when the key already exists', async () => {
-      (KVModel.findOne as jest.Mock).mockResolvedValue({ key: mockKey });
-      const result = await createObject(mockKey, mockData, mockTTL);
-      expect(result).toBe('Key already exists in the database');
-      expect(KVModel.findOne).toHaveBeenCalledWith({ where: { key: mockKey } });
-      expect(KVModel.create).not.toHaveBeenCalled();
-      expect(redisClient.setEx).not.toHaveBeenCalled();
-    });
-});
+  describe('createObjectsBatch', () => {
+    it('should create objects in batch successfully', async () => {
+      (KVModel.findOne as jest.Mock).mockResolvedValue(null);
+      (KVModel.create as jest.Mock).mockResolvedValue({});
 
-describe('createObjectsBatch', () => {
-    const mockObjects = [
-      { key: 'key1', data: { name: 'Object 1' }, ttl: 60 },
-      { key: 'key2', data: { name: 'Object 2' }, ttl: 60 },
-    ];
-    const mockTenantId = 'tenant-1';
-  
-    beforeEach(() => {
-      jest.clearAllMocks();
+      const response = await createObjectsBatch(
+        [
+          { key: 'key1', data: { test: 'data1' } },
+          { key: 'key2', data: { test: 'data2' } },
+        ],
+        'tenant-123'
+      );
+
+      expect(response.message).toBe('All keys were successfully created');
+      expect(response.created).toEqual(['key1', 'key2']);
     });
-  
-    it('should return a success message with created keys and handle duplicates', async () => {
-      (getTenantIdForKey as jest.Mock).mockResolvedValue(mockTenantId);
+
+    it('should throw ValidationError if batch limit is exceeded', async () => {
+      const objects = new Array(51).fill({ key: 'key', data: {} });
+
+      await expect(createObjectsBatch(objects, 'tenant-123')).rejects.toThrow(ValidationError);
+    });
+
+    it('should throw ConflictError for duplicate keys', async () => {
       (KVModel.findOne as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce({ key: 'key2' });
 
-      (KVModel.create as jest.Mock).mockResolvedValue({
-        key: 'key1',
-        data: { name: 'Object 1' },
-        ttl: 60,
-        tenantId: mockTenantId,
-      });
-
-      (redisClient.setEx as jest.Mock).mockResolvedValue(true);
-
-      const result = await createObjectsBatch(mockObjects);
-
-      expect(KVModel.findOne).toHaveBeenCalledTimes(2);
-      expect(KVModel.findOne).toHaveBeenCalledWith({ where: { key: 'key1' } });
-      expect(KVModel.findOne).toHaveBeenCalledWith({ where: { key: 'key2' } });
-
-      expect(KVModel.create).toHaveBeenCalledWith({
-        key: 'key1',
-        data: { name: 'Object 1' },
-        ttl: 60,
-        tenantId: expect.any(String),
-      });
-
-      expect(redisClient.setEx).toHaveBeenCalledWith('key1', 60, JSON.stringify({ name: 'Object 1' }));
-      expect(redisClient.setEx).not.toHaveBeenCalledWith('key2');
-
-      expect(result).toEqual({
-        message: 'Some keys were not created because they already exist in the database',
-        duplicates: ['key2'],
-        created: ['key1'],
-      });
+      await expect(
+        createObjectsBatch(
+          [
+            { key: 'key1', data: { test: 'data1' } },
+            { key: 'key2', data: { test: 'data2' } },
+          ],
+          'tenant-123'
+        )
+      ).rejects.toThrow(ConflictError);
     });
+  });
 });
