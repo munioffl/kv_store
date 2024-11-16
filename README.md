@@ -72,8 +72,6 @@ DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=password
 DB_NAME=key_value_store
-REDIS_HOST=localhost
-REDIS_PORT=6379
 ```
 
 ### 3. Database Setup (MySQL)
@@ -108,16 +106,6 @@ REDIS_PORT=6379
 4. **Set Database User**:
    Update `.env` with the correct `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.
 
-### 4. Redis Setup
-1. **Install Redis**:
-   - On **macOS**:
-     ```bash
-     brew install redis
-     ```
-   - On **Ubuntu**:
-     ```bash
-     sudo apt update
-     sudo apt install redis-server
      ```
 
 ### 5. Run the Service
