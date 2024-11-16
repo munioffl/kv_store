@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { getTenantByApiKey } from '../services/tenantService';
 
 const rateLimiter = rateLimit({

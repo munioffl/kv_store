@@ -5,7 +5,7 @@
   "scripts": {
     "start": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
     "dev": "ts-node-dev src/index.ts",
-    "test": "jest --config=jest.config.js --verbose --forceExit",
+    "test": "jest --config=jest.config.js --verbose --forceExit --coverage",
     "build": "tsc"
   },
   "dependencies": {

@@ -17,14 +17,14 @@ const validateTenant = async (apiKey: string): Promise<TenantModel> => {
 const objectSchema = Joi.object({
   key: Joi.string().required(),
   data: Joi.object().required(),
-  ttl: Joi.number().optional(),
+  ttl: Joi.number().optional().greater(Date.now() / 1000),
 });
 
 const objectsBatchSchema = Joi.array().items(
   Joi.object({
     key: Joi.string().required(),
     data: Joi.object().required(),
-    ttl: Joi.number().optional(),
+    ttl: Joi.number().optional().greater(Date.now() / 1000),
   })
 );
 

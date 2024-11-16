@@ -1,4 +1,3 @@
-import { KVModel } from '../models/kvModel';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';

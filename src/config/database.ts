@@ -1,5 +1,4 @@
 import { Sequelize } from 'sequelize';
-import { afterAll } from '@jest/globals';
 import { config } from './config';
 import { logger } from '../utils/logger';
 

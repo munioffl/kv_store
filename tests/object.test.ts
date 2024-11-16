@@ -11,19 +11,63 @@ describe('objectService', () => {
 
   describe('createObject', () => {
     it('should create a new object successfully', async () => {
-      (KVModel.findOne as jest.Mock).mockResolvedValue(null);
-      (KVModel.create as jest.Mock).mockResolvedValue({ key: 'test-key', data: { test: 'data' } });
-
+      (KVModel.findOrCreate as jest.Mock).mockResolvedValue([
+        { key: 'test-key', data: { test: 'data' }, ttl: Math.floor(Date.now() / 1000) + 3600 },
+        true, // Indicates the record was created
+      ]);
+  
       const response = await createObject('test-key', { test: 'data' }, 'tenant-123', 3600);
-
-      expect(response).toEqual(expect.objectContaining({ key: 'test-key' }));
-      expect(KVModel.create).toHaveBeenCalled();
+  
+      expect(response).toEqual(
+        expect.objectContaining({
+          key: 'test-key',
+          data: { test: 'data' },
+        })
+      );
+      expect(KVModel.findOrCreate).toHaveBeenCalledWith({
+        where: { key: 'test-key', tenantId: 'tenant-123' },
+        defaults: {
+          key: 'test-key',
+          data: { test: 'data' },
+          ttl: expect.any(Number),
+          tenantId: 'tenant-123',
+        },
+      });
     });
-
+  
     it('should throw ConflictError if the key already exists', async () => {
-      (KVModel.findOne as jest.Mock).mockResolvedValue({ key: 'test-key' });
-
+      (KVModel.findOrCreate as jest.Mock).mockResolvedValue([
+        { key: 'test-key' },
+        false, // Indicates the record was not created (already exists)
+      ]);
+  
       await expect(createObject('test-key', { test: 'data' }, 'tenant-123')).rejects.toThrow(ConflictError);
+  
+      expect(KVModel.findOrCreate).toHaveBeenCalledWith({
+        where: { key: 'test-key', tenantId: 'tenant-123' },
+        defaults: {
+          key: 'test-key',
+          data: { test: 'data' },
+          ttl: expect.any(Number),
+          tenantId: 'tenant-123',
+        },
+      });
+    });
+  
+    it('should handle errors gracefully when creation fails', async () => {
+      (KVModel.findOrCreate as jest.Mock).mockRejectedValue(new Error('Database error'));
+  
+      await expect(createObject('test-key', { test: 'data' }, 'tenant-123')).rejects.toThrow('Error while creating object');
+  
+      expect(KVModel.findOrCreate).toHaveBeenCalledWith({
+        where: { key: 'test-key', tenantId: 'tenant-123' },
+        defaults: {
+          key: 'test-key',
+          data: { test: 'data' },
+          ttl: expect.any(Number),
+          tenantId: 'tenant-123',
+        },
+      });
     });
   });
 
@@ -37,11 +81,25 @@ describe('objectService', () => {
       expect(KVModel.findOne).toHaveBeenCalled();
     });
 
-    it('should throw NotFoundError if the key does not exist', async () => {
-      (KVModel.findOne as jest.Mock).mockResolvedValue(null);
+
+    it('should retrieve an object successfully if the key has not expired', async () => {
+      const validKey = { key: 'test-key', data: { test: 'data' }, ttl: Math.floor(Date.now() / 1000) + 3600 };
+      (KVModel.findOne as jest.Mock).mockResolvedValue(validKey);
+
+      const response = await getObject('test-key', 'tenant-123');
+
+      expect(response).toEqual(validKey);
+      expect(KVModel.findOne).toHaveBeenCalledWith({ where: { key: 'test-key', tenantId: 'tenant-123' } });
+    });
+    
+    it('should throw NotFoundError if the key has expired', async () => {
+      const expiredKey = { key: 'test-key', data: { test: 'data' }, ttl: Math.floor(Date.now() / 1000) - 100 };
+      (KVModel.findOne as jest.Mock).mockResolvedValue(expiredKey);
 
       await expect(getObject('test-key', 'tenant-123')).rejects.toThrow(NotFoundError);
+      expect(KVModel.destroy).toHaveBeenCalledWith({ where: { key: 'test-key', tenantId: 'tenant-123' } });
     });
+});
   });
 
   describe('deleteObject', () => {
@@ -98,4 +156,3 @@ describe('objectService', () => {
       ).rejects.toThrow(ConflictError);
     });
   });
-});

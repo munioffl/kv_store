@@ -4,22 +4,26 @@ import { ConflictError, NotFoundError, ValidationError } from '../utils/errors';
 
 const BATCH_LIMIT = 50;
 
-export async function createObject(key: string, data: object, tenantId: string, ttl?: number) {
-  const existingRecord = await KVModel.findOne({ where: { key } });
-  if (existingRecord) {
-    throw new ConflictError('Key already exists in the database');
-  }
+export async function createObject(key: string, data: object, tenantId: string, ttl: number = Math.floor(Date.now() / 1000) + 3600) {
   try {
-    const response = await KVModel.create({ key, data, ttl, tenantId });
-    return response;
+    const [record, created] = await KVModel.findOrCreate({
+      where: { key, tenantId },
+      defaults: { key, data, ttl, tenantId },
+    });
+    if (!created) {
+      throw new ConflictError('Key already exists in the database');
+    }
+
+    return record;
   } catch (error) {
-    throw new ValidationError('Error while creating object');
+    if (error instanceof ConflictError) {
+      throw error;
+    }
+    throw new Error('Error while creating object');
   }
 }
-
 export async function getObject(key: string, tenantId: string) {
   const record = await KVModel.findOne({ where: { key, tenantId } });
-  
   if (!record) {
     throw new NotFoundError('Key not found in database');
   }

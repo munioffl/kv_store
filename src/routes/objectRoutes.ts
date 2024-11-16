@@ -1,4 +1,4 @@
-import express, { NextFunction, Request, Response } from 'express';
+import express from 'express';
 import { getObjectController, createObjectController, deleteObjectController, createObjectsBatchController } from '../controllers/objectController';
 import { authenticateTenant } from '../middlewares/authenticateTenant';
 import rateLimiter from '../middlewares/rateLimiter';
